@@ -448,6 +448,7 @@ brm <- function(formula, data, family = gaussian(), prior = NULL,
                 opencl = getOption("brms.opencl", NULL),
                 normalize = getOption("brms.normalize", TRUE),
                 control = NULL,
+                marginalize = NULL,
                 algorithm = getOption("brms.algorithm", "sampling"),
                 backend = getOption("brms.backend", "rstan"),
                 future = getOption("future", FALSE), silent = 1,
@@ -527,6 +528,23 @@ brm <- function(formula, data, family = gaussian(), prior = NULL,
       data_name = substitute_name(data)
     )
     bframe <- brmsframe(bterms, data)
+    marginalize <- as.character(marginalize)
+    if (is.character(marginalize)) {
+      print(str(bframe))
+      levels <- attr(bframe$frame$re,"levels")
+      print(length(levels))
+      if(!(marginalize %in% names(levels))){
+        stop('Incorrect indexing of the marginalized effect!')
+      }
+      for(effect in bframe$frame$re$gcall){
+        if(effect$groups == marginalize && effect$dist != 'gaussian'){
+          stop('The marginalized effect should be gaussian!')
+        }
+      }
+      if(bframe$family$family!='gaussian'){
+        stop('We currently only support gaussian family!')
+      }
+    }
     prior <- .validate_prior(
       prior, bframe = bframe,
       sample_prior = sample_prior
@@ -542,8 +560,11 @@ brm <- function(formula, data, family = gaussian(), prior = NULL,
     model <- .stancode(
       bframe, prior = prior, stanvars = stanvars,
       save_model = save_model, backend = backend, threads = threads,
-      opencl = opencl, normalize = normalize
+      opencl = opencl, normalize = normalize, marginalize = marginalize
     )
+    sink('stan.stan')
+    print(model)
+    sink()
     # initialize S3 object
     x <- brmsfit(
       formula = formula, data = data, data2 = data2, prior = prior,
@@ -560,6 +581,8 @@ brm <- function(formula, data, family = gaussian(), prior = NULL,
       bframe, data = data, prior = prior, data2 = data2,
       stanvars = stanvars, threads = threads
     )
+
+    #print(sdata)
 
     if (empty) {
       # return the brmsfit object with an empty 'fit' slot

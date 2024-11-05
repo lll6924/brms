@@ -112,7 +112,9 @@ stancode.default <- function(object, data, family = gaussian(),
                       normalize = getOption("brms.normalize", TRUE),
                       parse = getOption("brms.parse_stancode", FALSE),
                       backend = getOption("brms.backend", "rstan"),
-                      silent = TRUE, save_model = NULL, ...) {
+                      silent = TRUE, save_model = NULL, marginalize = NULL, ...) {
+  print(marginalize)
+  marginalize_id <- which(names(attr(bterms$frame$re,"levels")) == marginalize)
 
   normalize <- as_one_logical(normalize)
   parse <- as_one_logical(parse)
@@ -120,10 +122,11 @@ stancode.default <- function(object, data, family = gaussian(),
   silent <- as_one_logical(silent)
   scode_predictor <- stan_predictor(
     bterms, prior = prior, normalize = normalize,
-    stanvars = stanvars, threads = threads
+    stanvars = stanvars, threads = threads, marginalize_id = marginalize_id
   )
+  print(scode_predictor)
   scode_re <- stan_re(
-    bterms, prior = prior, threads = threads, normalize = normalize
+    bterms, prior = prior, threads = threads, normalize = normalize, marginalize_id = marginalize_id
   )
   scode_Xme <- stan_Xme(
     bterms, prior = prior, threads = threads, normalize = normalize
@@ -260,6 +263,7 @@ stancode.default <- function(object, data, family = gaussian(),
     scode_re[["par"]],
     scode_Xme[["par"]]
   )
+
   # prepare additional sampling from priors
   scode_rngprior <- stan_rngprior(
     tpar_prior = scode_tpar_prior,

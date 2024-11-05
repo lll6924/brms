@@ -27,15 +27,19 @@ stan_log_lik.mvbrmsterms <- function(x, ...) {
 }
 
 # Stan code for the log likelihood of a regular family
-stan_log_lik_family <- function(bterms, threads, ...) {
+stan_log_lik_family <- function(bterms, threads, marginalize_id = NULL, ...) {
   stopifnot(is.brmsterms(bterms))
   # prepare family part of the likelihood
-  log_lik_args <- nlist(bterms, threads, ...)
-  log_lik_fun <- prepare_family(bterms)$fun
+  log_lik_args <- nlist(bterms, threads , ...)
+  log_lik_fun <- prepare_family(bterms, marginalize_id)$fun
   log_lik_fun <- paste0("stan_log_lik_", log_lik_fun)
   ll <- do_call(log_lik_fun, log_lik_args)
   # incorporate other parts into the likelihood
   args <- nlist(ll, bterms, threads, ...)
+  if(!is.null(marginalize_id) && length(marginalize_id)>0){ # Add the parameters of the marginalized variables to the likelihood function
+    args$ll$args <- paste(args$ll$args, marginalize_id, sep = ", ")
+    args$ll$dist <- 'normal_id_glm_marginalized'
+  }
   mix <- get_mix_id(bterms)
   if (nzchar(mix)) {
     out <- do_call(stan_log_lik_mix, args)
@@ -56,6 +60,7 @@ stan_log_lik_family <- function(bterms, threads, ...) {
       "  }\n"
     )
   }
+  print(out)
   out
 }
 

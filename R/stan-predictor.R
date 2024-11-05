@@ -23,6 +23,8 @@ stan_predictor.bframel <- function(x, ...) {
   )
   out <- stan_special_prior(x, out = out, ...)
   out <- stan_eta_combine(x, out = out, ...)
+  print(out)
+  print(234)
   out
 }
 
@@ -117,6 +119,8 @@ stan_predictor.brmsframe <- function(x, prior, normalize, ...) {
   out$model_log_lik <- stan_log_lik(
     x, normalize = normalize, ...
   )
+  print(out)
+  print(123)
   list(out)
 }
 
@@ -463,7 +467,7 @@ stan_fe <- function(bframe, prior, stanvars, threads, primitive,
 }
 
 # Stan code for group-level effects
-stan_re <- function(bframe, prior, normalize, ...) {
+stan_re <- function(bframe, prior, normalize, marginalize_id = NULL, ...) {
   lpdf <- ifelse(normalize, "lpdf", "lupdf")
   reframe <- bframe$frame$re
   stopifnot(is.reframe(reframe))
@@ -500,7 +504,7 @@ stan_re <- function(bframe, prior, normalize, ...) {
   # the ID syntax requires group-level effects to be evaluated separately
   tmp <- lapply(
     IDs, .stan_re, bframe = bframe, prior = prior,
-    normalize = normalize, ...
+    normalize = normalize, marginalize_id = marginalize_id, ...
   )
   out <- collapse_lists(ls = c(list(out), tmp))
   out
@@ -508,7 +512,7 @@ stan_re <- function(bframe, prior, normalize, ...) {
 
 # Stan code for group-level effects per ID
 # @param id the ID of the grouping factor
-.stan_re <- function(id, bframe, prior, threads, normalize, ...) {
+.stan_re <- function(id, bframe, prior, threads, normalize, marginalize_id = NULL, ...) {
   lpdf <- ifelse(normalize, "lpdf", "lupdf")
   out <- list()
   r <- subset2(bframe$frame$re, id = id)
@@ -625,129 +629,146 @@ stan_re <- function(bframe, prior, normalize, ...) {
     str_add(out$data) <- glue(
       "  int<lower=1> NC_{id};  // number of group-level correlations\n"
     )
-    str_add(out$par) <- glue(
-      "  matrix[M_{id}, N_{id}] z_{id};",
-      "  // standardized group-level effects\n"
-    )
-    str_add(out$model_prior) <- glue(
-      "  target += std_normal_{lpdf}(to_vector(z_{id}));\n"
-    )
+    if(id != marginalize_id){ # remove the effect when marginalized
+      str_add(out$par) <- glue(
+        "  matrix[M_{id}, N_{id}] z_{id};",
+        "  // standardized group-level effects\n"
+      )
+      str_add(out$model_prior) <- glue(
+        "  target += std_normal_{lpdf}(to_vector(z_{id}));\n"
+      )
+    }
+
     if (has_rows(tr)) {
       dfm <- glue("rep_matrix(dfm_{tr$ggn[1]}, M_{id}) .* ")
     }
-    if (has_by) {
-      str_add_list(out) <- stan_prior(
-        prior, class = "L", group = r$group[1], coef = Nby,
-        type = glue("cholesky_factor_corr[M_{id}]"),
-        coef_type = glue("cholesky_factor_corr[M_{id}]"),
-        suffix = glue("_{id}"), dim = glue("[Nby_{id}]"),
-        comment = "cholesky factor of correlation matrix",
-        normalize = normalize
-      )
-      # separate definition from computation to support fixed parameters
-      str_add(out$tpar_def) <- glue(
-        "  matrix[N_{id}, M_{id}] r_{id};  // actual group-level effects\n"
-      )
-      if (has_cov) {
-        str_add(out$fun) <- "  #include 'fun_scale_r_cor_by_cov.stan'\n"
-        rdef <- glue(
-          "scale_r_cor_by_cov(z_{id}, sd_{id}, L_{id}, Jby_{id}, Lcov_{id})"
+    if (marginalize_id != id){
+      if (has_by) {
+        str_add_list(out) <- stan_prior(
+          prior, class = "L", group = r$group[1], coef = Nby,
+          type = glue("cholesky_factor_corr[M_{id}]"),
+          coef_type = glue("cholesky_factor_corr[M_{id}]"),
+          suffix = glue("_{id}"), dim = glue("[Nby_{id}]"),
+          comment = "cholesky factor of correlation matrix",
+          normalize = normalize
+        )
+        # separate definition from computation to support fixed parameters
+
+        str_add(out$tpar_def) <- glue(
+          "  matrix[N_{id}, M_{id}] r_{id};  // actual group-level effects\n"
+        )
+
+
+        if (has_cov) {
+          str_add(out$fun) <- "  #include 'fun_scale_r_cor_by_cov.stan'\n"
+          rdef <- glue(
+            "scale_r_cor_by_cov(z_{id}, sd_{id}, L_{id}, Jby_{id}, Lcov_{id})"
+          )
+        } else {
+          str_add(out$fun) <- "  #include 'fun_scale_r_cor_by.stan'\n"
+          rdef  <- glue("scale_r_cor_by(z_{id}, sd_{id}, L_{id}, Jby_{id})")
+        }
+
+        str_add(out$tpar_comp) <- glue(
+          "  // compute actual group-level effects\n",
+          "  r_{id} = {dfm}{rdef};\n"
+        )
+
+        str_add(out$gen_def) <- cglue(
+          "  // compute group-level correlations\n",
+          "  corr_matrix[M_{id}] Cor_{id}_{Nby}",
+          " = multiply_lower_tri_self_transpose(L_{id}[{Nby}]);\n",
+          "  vector<lower=-1,upper=1>[NC_{id}] cor_{id}_{Nby};\n"
+        )
+        str_add(out$gen_comp) <- stan_cor_gen_comp(
+          glue("cor_{id}_{Nby}"), glue("M_{id}")
         )
       } else {
-        str_add(out$fun) <- "  #include 'fun_scale_r_cor_by.stan'\n"
-        rdef  <- glue("scale_r_cor_by(z_{id}, sd_{id}, L_{id}, Jby_{id})")
-      }
-      str_add(out$tpar_comp) <- glue(
-        "  // compute actual group-level effects\n",
-        "  r_{id} = {dfm}{rdef};\n"
-      )
-      str_add(out$gen_def) <- cglue(
-        "  // compute group-level correlations\n",
-        "  corr_matrix[M_{id}] Cor_{id}_{Nby}",
-        " = multiply_lower_tri_self_transpose(L_{id}[{Nby}]);\n",
-        "  vector<lower=-1,upper=1>[NC_{id}] cor_{id}_{Nby};\n"
-      )
-      str_add(out$gen_comp) <- stan_cor_gen_comp(
-        glue("cor_{id}_{Nby}"), glue("M_{id}")
-      )
-    } else {
-      str_add_list(out) <- stan_prior(
-        prior, class = "L", group = r$group[1], suffix = usc(id),
-        type = glue("cholesky_factor_corr[M_{id}]"),
-        comment = "cholesky factor of correlation matrix",
-        normalize = normalize
-      )
-      if (has_cov) {
-        str_add(out$fun) <- "  #include 'fun_scale_r_cor_cov.stan'\n"
-        rdef <- glue("scale_r_cor_cov(z_{id}, sd_{id}, L_{id}, Lcov_{id})")
-      } else {
-        str_add(out$fun) <- "  #include 'fun_scale_r_cor.stan'\n"
-        rdef <- glue("scale_r_cor(z_{id}, sd_{id}, L_{id})")
+        str_add_list(out) <- stan_prior(
+          prior, class = "L", group = r$group[1], suffix = usc(id),
+          type = glue("cholesky_factor_corr[M_{id}]"),
+          comment = "cholesky factor of correlation matrix",
+          normalize = normalize
+        )
+        if (has_cov) {
+          str_add(out$fun) <- "  #include 'fun_scale_r_cor_cov.stan'\n"
+          rdef <- glue("scale_r_cor_cov(z_{id}, sd_{id}, L_{id}, Lcov_{id})")
+        } else {
+          str_add(out$fun) <- "  #include 'fun_scale_r_cor.stan'\n"
+          rdef <- glue("scale_r_cor(z_{id}, sd_{id}, L_{id})")
+        }
+        # separate definition from computation to support fixed parameters
+        str_add(out$tpar_def) <- glue(
+          "  matrix[N_{id}, M_{id}] r_{id};  // actual group-level effects\n"
+        )
+        str_add(out$tpar_comp) <- glue(
+          "  // compute actual group-level effects\n",
+          "  r_{id} = {dfm}{rdef};\n"
+        )
+        str_add(out$gen_def) <- glue(
+          "  // compute group-level correlations\n",
+          "  corr_matrix[M_{id}] Cor_{id}",
+          " = multiply_lower_tri_self_transpose(L_{id});\n",
+          "  vector<lower=-1,upper=1>[NC_{id}] cor_{id};\n"
+        )
+        str_add(out$gen_comp) <- stan_cor_gen_comp(
+          cor = glue("cor_{id}"), ncol = glue("M_{id}")
+        )
       }
       # separate definition from computation to support fixed parameters
-      str_add(out$tpar_def) <- glue(
-        "  matrix[N_{id}, M_{id}] r_{id};  // actual group-level effects\n"
+      str_add(out$tpar_def) <-
+        "  // using vectors speeds up indexing in loops\n"
+      str_add(out$tpar_def) <- cglue(
+        "  vector[N_{id}] r_{idp}_{r$cn};\n"
       )
-      str_add(out$tpar_comp) <- glue(
-        "  // compute actual group-level effects\n",
-        "  r_{id} = {dfm}{rdef};\n"
+      str_add(out$tpar_comp) <- cglue(
+        "  r_{idp}_{r$cn} = r_{id}[, {J}];\n"
       )
-      str_add(out$gen_def) <- glue(
-        "  // compute group-level correlations\n",
-        "  corr_matrix[M_{id}] Cor_{id}",
-        " = multiply_lower_tri_self_transpose(L_{id});\n",
-        "  vector<lower=-1,upper=1>[NC_{id}] cor_{id};\n"
-      )
-      str_add(out$gen_comp) <- stan_cor_gen_comp(
-        cor = glue("cor_{id}"), ncol = glue("M_{id}")
+      str_add(out$pll_args) <- cglue(
+        ", vector r_{idp}_{r$cn}"
       )
     }
-    # separate definition from computation to support fixed parameters
-    str_add(out$tpar_def) <-
-      "  // using vectors speeds up indexing in loops\n"
-    str_add(out$tpar_def) <- cglue(
-      "  vector[N_{id}] r_{idp}_{r$cn};\n"
-    )
-    str_add(out$tpar_comp) <- cglue(
-      "  r_{idp}_{r$cn} = r_{id}[, {J}];\n"
-    )
-    str_add(out$pll_args) <- cglue(
-      ", vector r_{idp}_{r$cn}"
-    )
+
+
   } else {
     # single or uncorrelated group-level effects
-    str_add(out$par) <- glue(
-      "  array[M_{id}] vector[N_{id}] z_{id};",
-      "  // standardized group-level effects\n"
-    )
-    str_add(out$model_prior) <- cglue(
-      "  target += std_normal_{lpdf}(z_{id}[{seq_rows(r)}]);\n"
-    )
+    if(marginalize_id != id){
+      str_add(out$par) <- glue(
+        "  array[M_{id}] vector[N_{id}] z_{id};",
+        "  // standardized group-level effects\n"
+      )
+      str_add(out$model_prior) <- cglue(
+        "  target += std_normal_{lpdf}(z_{id}[{seq_rows(r)}]);\n"
+      )
+    }
+
     Lcov <- str_if(has_cov, glue("Lcov_{id} * "))
     if (has_rows(tr)) {
       dfm <- glue("dfm_{tr$ggn[1]} .* ")
     }
-    if (has_by) {
-      # separate definition from computation to support fixed parameters
-      str_add(out$tpar_def) <- cglue(
-        "  vector[N_{id}] r_{idp}_{r$cn};  // actual group-level effects\n"
-      )
-      str_add(out$tpar_comp) <- cglue(
-        "  r_{idp}_{r$cn} = {dfm}(transpose(sd_{id}[{J}, Jby_{id}])",
-        " .* ({Lcov}z_{id}[{J}]));\n"
-      )
-    } else {
-      # separate definition from computation to support fixed parameters
-      str_add(out$tpar_def) <- cglue(
-        "  vector[N_{id}] r_{idp}_{r$cn};  // actual group-level effects\n"
-      )
-      str_add(out$tpar_comp) <- cglue(
-        "  r_{idp}_{r$cn} = {dfm}(sd_{id}[{J}] * ({Lcov}z_{id}[{J}]));\n"
+    if(marginalize_id != id){
+      if (has_by) {
+        # separate definition from computation to support fixed parameters
+        str_add(out$tpar_def) <- cglue(
+          "  vector[N_{id}] r_{idp}_{r$cn};  // actual group-level effects\n"
+        )
+        str_add(out$tpar_comp) <- cglue(
+          "  r_{idp}_{r$cn} = {dfm}(transpose(sd_{id}[{J}, Jby_{id}])",
+          " .* ({Lcov}z_{id}[{J}]));\n"
+        )
+      } else {
+        # separate definition from computation to support fixed parameters
+        str_add(out$tpar_def) <- cglue(
+          "  vector[N_{id}] r_{idp}_{r$cn};  // actual group-level effects\n"
+        )
+        str_add(out$tpar_comp) <- cglue(
+          "  r_{idp}_{r$cn} = {dfm}(sd_{id}[{J}] * ({Lcov}z_{id}[{J}]));\n"
+        )
+      }
+      str_add(out$pll_args) <- cglue(
+        ", vector r_{idp}_{r$cn}"
       )
     }
-    str_add(out$pll_args) <- cglue(
-      ", vector r_{idp}_{r$cn}"
-    )
   }
   out
 }
@@ -2007,7 +2028,7 @@ stan_Xme <- function(bframe, prior, threads, normalize) {
 # @param primitive use Stan's GLM likelihood primitives?
 # @param ... currently unused
 # @return list of character strings containing Stan code
-stan_eta_combine <- function(bframe, out, threads, primitive, ...) {
+stan_eta_combine <- function(bframe, out, threads, primitive, marginalize_id = NULL, ...) {
   stopifnot(is.btl(bframe), is.list(out))
   if (primitive && !has_special_terms(bframe)) {
     # only overall effects and perhaps an intercept are present
@@ -2026,7 +2047,7 @@ stan_eta_combine <- function(bframe, out, threads, primitive, ...) {
     str_add(out$model_comp_eta_basic) <- glue("  {eta} +={out$eta};\n")
   }
   out$eta <- NULL
-  str_add(out$loopeta) <- stan_eta_re(bframe, threads = threads)
+  str_add(out$loopeta) <- stan_eta_re(bframe, threads = threads, marginalize_id = marginalize_id)
   if (isTRUE(nzchar(out$loopeta))) {
     # parts of eta are computed in a loop over observations
     out$loopeta <- sub("^[ \t\r\n]+\\+", "", out$loopeta, perl = TRUE)
@@ -2058,11 +2079,14 @@ stan_eta_combine <- function(bframe, out, threads, primitive, ...) {
 
 # write the group-level part of the linear predictor
 # @return a single character string
-stan_eta_re <- function(bframe, threads) {
+stan_eta_re <- function(bframe, threads, marginalize_id = marginalize_id) {
   eta_re <- ""
   n <- stan_nn(threads)
   reframe <- subset2(bframe$frame$re, type = c("", "mmc"))
   for (id in unique(reframe$id)) {
+    if(id == marginalize_id){
+      next
+    }
     r <- subset2(reframe, id = id)
     rpx <- check_prefix(r)
     idp <- paste0(r$id, usc(combine_prefix(rpx)))
@@ -2070,6 +2094,7 @@ stan_eta_re <- function(bframe, threads) {
     if (r$gtype[1] == "mm") {
       ng <- seq_along(r$gcall[[1]]$groups)
       for (i in seq_rows(r)) {
+
         str_add(eta_re) <- cglue(
           " + W_{idresp[i]}_{ng}{n}",
           " * r_{idp[i]}_{r$cn[i]}[J_{idresp[i]}_{ng}{n}]",
