@@ -120,14 +120,18 @@ stancode.default <- function(object, data, family = gaussian(),
   parse <- as_one_logical(parse)
   backend <- match.arg(backend, backend_choices())
   silent <- as_one_logical(silent)
-  scode_predictor <- stan_predictor(
-    bterms, prior = prior, normalize = normalize,
-    stanvars = stanvars, threads = threads, marginalize_id = marginalize_id
-  )
-  print(scode_predictor)
+
   scode_re <- stan_re(
     bterms, prior = prior, threads = threads, normalize = normalize, marginalize_id = marginalize_id
   )
+  print(scode_re)
+
+  scode_predictor <- stan_predictor(
+    bterms, prior = prior, normalize = normalize,
+    stanvars = stanvars, threads = threads, marginalize_id = marginalize_id, scode_re = scode_re
+  )
+  print(scode_predictor)
+
   scode_Xme <- stan_Xme(
     bterms, prior = prior, threads = threads, normalize = normalize
   )

@@ -528,11 +528,9 @@ brm <- function(formula, data, family = gaussian(), prior = NULL,
       data_name = substitute_name(data)
     )
     bframe <- brmsframe(bterms, data)
-    marginalize <- as.character(marginalize)
-    if (is.character(marginalize)) {
-      print(str(bframe))
+    if (!is.null(marginalize)) {
+      marginalize <- as.character(marginalize)
       levels <- attr(bframe$frame$re,"levels")
-      print(length(levels))
       if(!(marginalize %in% names(levels))){
         stop('Incorrect indexing of the marginalized effect!')
       }

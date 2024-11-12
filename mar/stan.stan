@@ -68,6 +68,7 @@ parameters {
   matrix[M_1, N_1] z_1;  // standardized group-level effects
   cholesky_factor_corr[M_1] L_1;  // cholesky factor of correlation matrix
   vector<lower=0>[M_2] sd_2;  // group-level standard deviations
+  cholesky_factor_corr[M_2] L_2;  // cholesky factor of correlation matrix
   vector<lower=0>[M_3] sd_3;  // group-level standard deviations
   array[M_3] vector[N_3] z_3;  // standardized group-level effects
   vector<lower=0>[M_4] sd_4;  // group-level standard deviations
@@ -102,6 +103,7 @@ transformed parameters {
   lprior += lkj_corr_cholesky_lpdf(L_1 | 1);
   lprior += cauchy_lpdf(sd_2 | 0,2)
     - 2 * cauchy_lccdf(0 | 0,2);
+  lprior += lkj_corr_cholesky_lpdf(L_2 | 1);
   lprior += cauchy_lpdf(sd_3 | 0,2)
     - 1 * cauchy_lccdf(0 | 0,2);
   lprior += cauchy_lpdf(sd_4 | 0,2)
@@ -118,7 +120,7 @@ model {
       // add more terms to the linear predictor
       mu[n] += r_1_1[J_1[n]] * Z_1_1[n] + r_1_2[J_1[n]] * Z_1_2[n] + r_3_1[J_3[n]] * Z_3_1[n] + r_4_1[J_4[n]] * Z_4_1[n] + r_4_2[J_4[n]] * Z_4_2[n];
     }
-    target += normal_id_glm_marginalized_lpdf(Y | Xc, mu, b, sigma, 2);
+    target += normal_id_glm_marginalized_lpdf(Y | Xc, mu, b, sigma, N_2, M_2, sd_2, L_2, Z_2_1, Z_2_2, );
   }
   // priors including constants
   target += lprior;
@@ -132,6 +134,10 @@ generated quantities {
   // compute group-level correlations
   corr_matrix[M_1] Cor_1 = multiply_lower_tri_self_transpose(L_1);
   vector<lower=-1,upper=1>[NC_1] cor_1;
+  matrix[M_2, N_2] z_2;  // standardized group-level effects
+  // compute group-level correlations
+  corr_matrix[M_2] Cor_2 = multiply_lower_tri_self_transpose(L_2);
+  vector<lower=-1,upper=1>[NC_2] cor_2;
   // compute group-level correlations
   corr_matrix[M_4] Cor_4 = multiply_lower_tri_self_transpose(L_4);
   vector<lower=-1,upper=1>[NC_4] cor_4;
@@ -142,9 +148,16 @@ generated quantities {
     }
   }
   // extract upper diagonal of correlation matrix
+  for (k in 1:M_2) {
+    for (j in 1:(k - 1)) {
+      cor_2[choose(k - 1, 2) + j] = Cor_2[j, k];
+    }
+  }
+  // extract upper diagonal of correlation matrix
   for (k in 1:M_4) {
     for (j in 1:(k - 1)) {
       cor_4[choose(k - 1, 2) + j] = Cor_4[j, k];
     }
   }
+  z_2 = normal_id_glm_marginalized_recover(Y, Xc, mu, b, sigma, N_2, M_2, sd_2, L_2, Z_2_1, Z_2_2, );
 }
