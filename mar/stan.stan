@@ -13,6 +13,8 @@ functions {
     return transpose(diag_pre_multiply(SD, L) * z);
   }
 
+
+#include marginalization.stan
 }
 data {
   int<lower=1> N;  // total number of observations
@@ -68,9 +70,9 @@ parameters {
   matrix[M_1, N_1] z_1;  // standardized group-level effects
   cholesky_factor_corr[M_1] L_1;  // cholesky factor of correlation matrix
   vector<lower=0>[M_2] sd_2;  // group-level standard deviations
+  matrix[M_2, N_2] z_2;  // standardized group-level effects
   cholesky_factor_corr[M_2] L_2;  // cholesky factor of correlation matrix
   vector<lower=0>[M_3] sd_3;  // group-level standard deviations
-  array[M_3] vector[N_3] z_3;  // standardized group-level effects
   vector<lower=0>[M_4] sd_4;  // group-level standard deviations
   matrix[M_4, N_4] z_4;  // standardized group-level effects
   cholesky_factor_corr[M_4] L_4;  // cholesky factor of correlation matrix
@@ -80,7 +82,10 @@ transformed parameters {
   // using vectors speeds up indexing in loops
   vector[N_1] r_1_1;
   vector[N_1] r_1_2;
-  vector[N_3] r_3_1;  // actual group-level effects
+  matrix[N_2, M_2] r_2;  // actual group-level effects
+  // using vectors speeds up indexing in loops
+  vector[N_2] r_2_1;
+  vector[N_2] r_2_2;
   matrix[N_4, M_4] r_4;  // actual group-level effects
   // using vectors speeds up indexing in loops
   vector[N_4] r_4_1;
@@ -90,7 +95,10 @@ transformed parameters {
   r_1 = scale_r_cor(z_1, sd_1, L_1);
   r_1_1 = r_1[, 1];
   r_1_2 = r_1[, 2];
-  r_3_1 = (sd_3[1] * (z_3[1]));
+  // compute actual group-level effects
+  r_2 = scale_r_cor(z_2, sd_2, L_2);
+  r_2_1 = r_2[, 1];
+  r_2_2 = r_2[, 2];
   // compute actual group-level effects
   r_4 = scale_r_cor(z_4, sd_4, L_4);
   r_4_1 = r_4[, 1];
@@ -118,14 +126,14 @@ model {
     mu += Intercept;
     for (n in 1:N) {
       // add more terms to the linear predictor
-      mu[n] += r_1_1[J_1[n]] * Z_1_1[n] + r_1_2[J_1[n]] * Z_1_2[n] + r_3_1[J_3[n]] * Z_3_1[n] + r_4_1[J_4[n]] * Z_4_1[n] + r_4_2[J_4[n]] * Z_4_2[n];
+      mu[n] += r_1_1[J_1[n]] * Z_1_1[n] + r_1_2[J_1[n]] * Z_1_2[n] + r_2_1[J_2[n]] * Z_2_1[n] + r_2_2[J_2[n]] * Z_2_2[n] + r_4_1[J_4[n]] * Z_4_1[n] + r_4_2[J_4[n]] * Z_4_2[n];
     }
-    target += normal_id_glm_marginalized_lpdf(Y | Xc, mu, b, sigma, N_2, M_2, sd_2, L_2, Z_2_1, Z_2_2, );
+    target += normal_id_glm_marginalized_lpdf(Y | Xc, mu, b, sigma, J_3, N_3, M_3, sd_3,  Z_3_1);
   }
   // priors including constants
   target += lprior;
   target += std_normal_lpdf(to_vector(z_1));
-  target += std_normal_lpdf(z_3[1]);
+  target += std_normal_lpdf(to_vector(z_2));
   target += std_normal_lpdf(to_vector(z_4));
 }
 generated quantities {
@@ -134,10 +142,10 @@ generated quantities {
   // compute group-level correlations
   corr_matrix[M_1] Cor_1 = multiply_lower_tri_self_transpose(L_1);
   vector<lower=-1,upper=1>[NC_1] cor_1;
-  matrix[M_2, N_2] z_2;  // standardized group-level effects
   // compute group-level correlations
   corr_matrix[M_2] Cor_2 = multiply_lower_tri_self_transpose(L_2);
   vector<lower=-1,upper=1>[NC_2] cor_2;
+  array[M_3] vector[N_3] z_3;  // standardized group-level effects
   // compute group-level correlations
   corr_matrix[M_4] Cor_4 = multiply_lower_tri_self_transpose(L_4);
   vector<lower=-1,upper=1>[NC_4] cor_4;
@@ -159,5 +167,12 @@ generated quantities {
       cor_4[choose(k - 1, 2) + j] = Cor_4[j, k];
     }
   }
-  z_2 = normal_id_glm_marginalized_recover(Y, Xc, mu, b, sigma, N_2, M_2, sd_2, L_2, Z_2_1, Z_2_2, );
+  // initialize linear predictor term
+  vector[N] mu = rep_vector(0.0, N);
+  mu += Intercept;
+  for (n in 1:N) {
+    // add more terms to the linear predictor
+    mu[n] += r_1_1[J_1[n]] * Z_1_1[n] + r_1_2[J_1[n]] * Z_1_2[n] + r_2_1[J_2[n]] * Z_2_1[n] + r_2_2[J_2[n]] * Z_2_2[n] + r_4_1[J_4[n]] * Z_4_1[n] + r_4_2[J_4[n]] * Z_4_2[n];
+  }
+  z_3 = normal_id_glm_marginalized_recover_rng(Y, Xc, mu, b, sigma, J_3, N_3, M_3, sd_3,  Z_3_1);
 }

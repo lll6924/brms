@@ -37,6 +37,7 @@ stan_log_lik_family <- function(bterms, threads, marginalize_id = NULL, scode_re
   # incorporate other parts into the likelihood
   args <- nlist(ll, bterms, threads, ...)
   if(!is.null(marginalize_id) && length(marginalize_id)>0){ # Add the parameters of the marginalized variables to the likelihood function
+    args$ll$args <- paste(args$ll$args, cglue("J_{marginalize_id}"), sep = ", ")
     args$ll$args <- paste(args$ll$args, scode_re$hyper_mar, sep = ", ")
     args$ll$args <- paste(args$ll$args, scode_re$data_mar, sep = " ")
     args$ll$dist <- 'normal_id_glm_marginalized'

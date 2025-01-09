@@ -124,13 +124,21 @@ stancode.default <- function(object, data, family = gaussian(),
   scode_re <- stan_re(
     bterms, prior = prior, threads = threads, normalize = normalize, marginalize_id = marginalize_id
   )
-  print(scode_re)
+  #print(scode_re)
 
   scode_predictor <- stan_predictor(
     bterms, prior = prior, normalize = normalize,
     stanvars = stanvars, threads = threads, marginalize_id = marginalize_id, scode_re = scode_re
   )
-  print(scode_predictor)
+
+  if(!is.null(marginalize_id) && length(marginalize_id)>0){ # Add the recovery code
+    str_add(scode_re$gen_comp) <- scode_predictor[[1]]$model_def
+    str_add(scode_re$gen_comp) <- scode_predictor[[1]]$model_comp_eta_basic
+    str_add(scode_re$gen_comp) <- scode_predictor[[1]]$model_comp_eta_loop
+    str_add(scode_re$gen_comp) <- cglue(
+      "  z_{marginalize_id} = normal_id_glm_marginalized_recover_rng(Y, Xc, mu, b, sigma, J_{marginalize_id}, {scode_re$hyper_mar} {scode_re$data_mar});\n"
+    )
+  }
 
   scode_Xme <- stan_Xme(
     bterms, prior = prior, threads = threads, normalize = normalize
@@ -229,15 +237,29 @@ stancode.default <- function(object, data, family = gaussian(),
   )
 
   # generate functions block
-  scode_functions <- paste0(
-    "// generated with brms ", utils::packageVersion("brms"), "\n",
-    "functions {\n",
-      scode_predictor[["fun"]],
-      scode_re[["fun"]],
-      collapse_stanvars(stanvars, "functions"),
-      scode_predictor[["partial_log_lik"]],
-    "}\n"
-  )
+  if(!is.null(marginalize_id) && length(marginalize_id)>0){
+    scode_functions <- paste0(
+      "// generated with brms ", utils::packageVersion("brms"), "\n",
+      "functions {\n",
+        scode_predictor[["fun"]],
+        scode_re[["fun"]],
+        collapse_stanvars(stanvars, "functions"),
+        scode_predictor[["partial_log_lik"]],
+        "#include marginalization.stan", "\n",
+      "}\n"
+    )
+  } else{
+    scode_functions <- paste0(
+      "// generated with brms ", utils::packageVersion("brms"), "\n",
+      "functions {\n",
+        scode_predictor[["fun"]],
+        scode_re[["fun"]],
+        collapse_stanvars(stanvars, "functions"),
+        scode_predictor[["partial_log_lik"]],
+      "}\n"
+    )
+  }
+
 
   # generate data block
   scode_data <- paste0(

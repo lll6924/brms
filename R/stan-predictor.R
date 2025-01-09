@@ -503,11 +503,7 @@ stan_re <- function(bframe, prior, normalize, marginalize_id = NULL, ...) {
     normalize = normalize, marginalize_id = marginalize_id, ...
   )
   out <- collapse_lists(ls = c(list(out), tmp))
-  if(!is.null(marginalize_id) && length(marginalize_id)>0){ # Add the recovery code
-    str_add(out$gen_comp) <- cglue(
-      "  z_{marginalize_id} = normal_id_glm_marginalized_recover(Y, Xc, mu, b, sigma, {out$hyper_mar} {out$data_mar});\n"
-    )
-  }
+  out$data_mar <- sub(", $", "", out$data_mar) # chop down the final ", "
   out
 }
 
@@ -756,6 +752,14 @@ stan_re <- function(bframe, prior, normalize, marginalize_id = NULL, ...) {
       )
       str_add(out$model_prior) <- cglue(
         "  target += std_normal_{lpdf}(z_{id}[{seq_rows(r)}]);\n"
+      )
+    } else{
+      out$hyper_mar <- c(out$hyper_mar, glue("N_{id}, "))
+      out$hyper_mar <- c(out$hyper_mar, glue("M_{id}, "))
+      out$hyper_mar <- c(out$hyper_mar, glue("sd_{id}, "))
+      str_add(out$gen_def) <- glue(
+        "  array[M_{id}] vector[N_{id}] z_{id};",
+        "  // standardized group-level effects\n"
       )
     }
 
