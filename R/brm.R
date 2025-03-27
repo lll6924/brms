@@ -528,6 +528,9 @@ brm <- function(formula, data, family = gaussian(), prior = NULL,
       data_name = substitute_name(data)
     )
     bframe <- brmsframe(bterms, data)
+
+    bframe$marginalize <- marginalize
+    bframe$marginalize_id <- which(names(attr(bframe$frame$re,"levels")) == marginalize)
     if (!is.null(marginalize)) {
       marginalize <- as.character(marginalize)
       levels <- attr(bframe$frame$re,"levels")
@@ -558,7 +561,7 @@ brm <- function(formula, data, family = gaussian(), prior = NULL,
     model <- .stancode(
       bframe, prior = prior, stanvars = stanvars,
       save_model = save_model, backend = backend, threads = threads,
-      opencl = opencl, normalize = normalize, marginalize = marginalize
+      opencl = opencl, normalize = normalize
     )
     sink('stan.stan')
     print(model)
@@ -579,8 +582,6 @@ brm <- function(formula, data, family = gaussian(), prior = NULL,
       bframe, data = data, prior = prior, data2 = data2,
       stanvars = stanvars, threads = threads
     )
-
-    #print(sdata)
 
     if (empty) {
       # return the brmsfit object with an empty 'fit' slot

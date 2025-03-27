@@ -39,7 +39,7 @@
         vector[N] F = 1 / s_u + G;
         vector[N] x = bincount(z/s_y, J);
         vector[N] Mu = s_u * (1 - G ./ F) .* x;
-        vector[N] L = s_u * sqrt(1/s_u - G + G ./ F .* G);
+        vector[N] L = sqrt(F);
         array[M] vector[N] ans;
         for (n in 1:N) {
             ans[1,n] = normal_rng(Mu[n], L[n]);

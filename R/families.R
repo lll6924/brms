@@ -1803,7 +1803,7 @@ always_normalized <- function(family) {
 }
 
 # prepare for calling family specific post-processing functions
-prepare_family <- function(x, marginalize_id = NULL) {
+prepare_family <- function(x) {
   stopifnot(is.brmsformula(x) || is.brmsterms(x))
   family <- x$family
   acframe <- frame_ac(x)

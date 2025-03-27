@@ -52,13 +52,15 @@ stan_predictor.brmsframe <- function(x, prior, normalize, ...) {
   args$primitive <- use_glm_primitive(x) || use_glm_primitive_categorical(x)
   for (nlp in names(x$nlpars)) {
     nlp_args <- list(x$nlpars[[nlp]])
-    str_add_list(out) <- do_call(stan_predictor, c(nlp_args, args))
+    nlp_args$marginalize_id <- x$marginalize_id
+    str_add_list(out) <- do_call(stan_predictor, c(nlp_args, args)) # Not sure how marginalize_id can be fed into this
   }
   for (dp in valid_dpars) {
     dp_terms <- x$dpars[[dp]]
     dp_comment <- stan_dpar_comments(dp, family = x$family)
     if (is.btl(dp_terms) || is.btnl(dp_terms)) {
       # distributional parameter is predicted
+      dp_terms$marginalize_id <- x$marginalize_id
       str_add_list(out) <- do_call(stan_predictor, c(list(dp_terms), args))
     } else if (is.numeric(x$fdpars[[dp]]$value)) {
       # distributional parameter is fixed to constant
@@ -122,7 +124,7 @@ stan_predictor.brmsframe <- function(x, prior, normalize, ...) {
 
 #' @export
 stan_predictor.mvbrmsframe <- function(x, prior, threads, normalize, ...) {
-  out <- lapply(x$terms, stan_predictor, prior = prior, threads = threads,
+  out <- lapply(x$terms, stan_predictor, prior = prior, threads = threads, # TODO: propagate marginalize_id into the terms
                 normalize = normalize, ...)
   out <- unlist(out, recursive = FALSE)
   if (!x$rescor) {
@@ -463,7 +465,7 @@ stan_fe <- function(bframe, prior, stanvars, threads, primitive,
 }
 
 # Stan code for group-level effects
-stan_re <- function(bframe, prior, normalize, marginalize_id = NULL, ...) {
+stan_re <- function(bframe, prior, normalize, ...) {
   lpdf <- ifelse(normalize, "lpdf", "lupdf")
   reframe <- bframe$frame$re
   stopifnot(is.reframe(reframe))
@@ -500,7 +502,7 @@ stan_re <- function(bframe, prior, normalize, marginalize_id = NULL, ...) {
   # the ID syntax requires group-level effects to be evaluated separately
   tmp <- lapply(
     IDs, .stan_re, bframe = bframe, prior = prior,
-    normalize = normalize, marginalize_id = marginalize_id, ...
+    normalize = normalize, ...
   )
   out <- collapse_lists(ls = c(list(out), tmp))
   out$data_mar <- sub(", $", "", out$data_mar) # chop down the final ", "
@@ -509,7 +511,7 @@ stan_re <- function(bframe, prior, normalize, marginalize_id = NULL, ...) {
 
 # Stan code for group-level effects per ID
 # @param id the ID of the grouping factor
-.stan_re <- function(id, bframe, prior, threads, normalize, marginalize_id = NULL, ...) {
+.stan_re <- function(id, bframe, prior, threads, normalize, ...) {
   lpdf <- ifelse(normalize, "lpdf", "lupdf")
   out <- list()
   r <- subset2(bframe$frame$re, id = id)
@@ -573,7 +575,7 @@ stan_re <- function(bframe, prior, normalize, marginalize_id = NULL, ...) {
         str_add(out$pll_args) <- cglue(
           ", data vector Z_{idp[i]}_{r$cn[i]}_{ng}"
         )
-        if(length(marginalize_id)>0&&id == marginalize_id){
+        if(length(bframe$marginalize_id)>0&&id == bframe$marginalize_id){
           out$data_mar <- c(out$data_mar, cglue("Z_{idp[i]}_{r$cn[i]}_{ng}, "))
         }
       }
@@ -584,7 +586,7 @@ stan_re <- function(bframe, prior, normalize, marginalize_id = NULL, ...) {
       str_add(out$pll_args) <- cglue(
         ", data vector Z_{idp[reqZ]}_{r$cn[reqZ]}"
       )
-      if(length(marginalize_id)>0&&id == marginalize_id){
+      if(length(bframe$marginalize_id)>0&&id == bframe$marginalize_id){
           out$data_mar <- c(out$data_mar, cglue("Z_{idp[reqZ]}_{r$cn[reqZ]}, "))
       }
     }
@@ -632,7 +634,7 @@ stan_re <- function(bframe, prior, normalize, marginalize_id = NULL, ...) {
     str_add(out$data) <- glue(
       "  int<lower=1> NC_{id};  // number of group-level correlations\n"
     )
-    if(length(marginalize_id)==0||id != marginalize_id){ # remove the effect when marginalized
+    if(length(bframe$marginalize_id)==0||id != bframe$marginalize_id){ # remove the effect when marginalized
       str_add(out$par) <- glue(
         "  matrix[M_{id}, N_{id}] z_{id};",
         "  // standardized group-level effects\n"
@@ -663,7 +665,7 @@ stan_re <- function(bframe, prior, normalize, marginalize_id = NULL, ...) {
         normalize = normalize
       )
       # separate definition from computation to support fixed parameters
-      if(length(marginalize_id)==0||marginalize_id != id){
+      if(length(bframe$marginalize_id)==0||bframe$marginalize_id != id){
         str_add(out$tpar_def) <- glue(
           "  matrix[N_{id}, M_{id}] r_{id};  // actual group-level effects\n"
         )
@@ -699,7 +701,7 @@ stan_re <- function(bframe, prior, normalize, marginalize_id = NULL, ...) {
         comment = "cholesky factor of correlation matrix",
         normalize = normalize
       )
-      if(length(marginalize_id)==0||marginalize_id != id){
+      if(length(bframe$marginalize_id)==0||bframe$marginalize_id != id){
 
         if (has_cov) {
           str_add(out$fun) <- "  #include 'fun_scale_r_cor_cov.stan'\n"
@@ -729,7 +731,7 @@ stan_re <- function(bframe, prior, normalize, marginalize_id = NULL, ...) {
         cor = glue("cor_{id}"), ncol = glue("M_{id}")
       )
     }
-    if(length(marginalize_id)==0||marginalize_id != id){
+    if(length(bframe$marginalize_id)==0||bframe$marginalize_id != id){
       # separate definition from computation to support fixed parameters
       str_add(out$tpar_def) <-
         "  // using vectors speeds up indexing in loops\n"
@@ -745,7 +747,7 @@ stan_re <- function(bframe, prior, normalize, marginalize_id = NULL, ...) {
     }
   } else {
     # single or uncorrelated group-level effects
-    if(length(marginalize_id)==0||marginalize_id != id){
+    if(length(bframe$marginalize_id)==0||bframe$marginalize_id != id){
       str_add(out$par) <- glue(
         "  array[M_{id}] vector[N_{id}] z_{id};",
         "  // standardized group-level effects\n"
@@ -767,7 +769,7 @@ stan_re <- function(bframe, prior, normalize, marginalize_id = NULL, ...) {
     if (has_rows(tr)) {
       dfm <- glue("dfm_{tr$ggn[1]} .* ")
     }
-    if(length(marginalize_id)==0||marginalize_id != id){
+    if(length(bframe$marginalize_id)==0||bframe$marginalize_id != id){
       if (has_by) {
         # separate definition from computation to support fixed parameters
         str_add(out$tpar_def) <- cglue(
@@ -2049,7 +2051,7 @@ stan_Xme <- function(bframe, prior, threads, normalize) {
 # @param primitive use Stan's GLM likelihood primitives?
 # @param ... currently unused
 # @return list of character strings containing Stan code
-stan_eta_combine <- function(bframe, out, threads, primitive, marginalize_id = NULL, ...) {
+stan_eta_combine <- function(bframe, out, threads, primitive, ...) {
   stopifnot(is.btl(bframe), is.list(out))
   if (primitive && !has_special_terms(bframe)) {
     # only overall effects and perhaps an intercept are present
@@ -2068,7 +2070,7 @@ stan_eta_combine <- function(bframe, out, threads, primitive, marginalize_id = N
     str_add(out$model_comp_eta_basic) <- glue("  {eta} +={out$eta};\n")
   }
   out$eta <- NULL
-  str_add(out$loopeta) <- stan_eta_re(bframe, threads = threads, marginalize_id = marginalize_id)
+  str_add(out$loopeta) <- stan_eta_re(bframe, threads = threads)
   if (isTRUE(nzchar(out$loopeta))) {
     # parts of eta are computed in a loop over observations
     out$loopeta <- sub("^[ \t\r\n]+\\+", "", out$loopeta, perl = TRUE)
@@ -2100,12 +2102,12 @@ stan_eta_combine <- function(bframe, out, threads, primitive, marginalize_id = N
 
 # write the group-level part of the linear predictor
 # @return a single character string
-stan_eta_re <- function(bframe, threads, marginalize_id = marginalize_id) {
+stan_eta_re <- function(bframe, threads) {
   eta_re <- ""
   n <- stan_nn(threads)
   reframe <- subset2(bframe$frame$re, type = c("", "mmc"))
   for (id in unique(reframe$id)) {
-    if(length(marginalize_id)>0&&id == marginalize_id){
+    if(length(bframe$marginalize_id)>0&&id == bframe$marginalize_id){
       next
     }
     r <- subset2(reframe, id = id)

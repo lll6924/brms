@@ -112,9 +112,7 @@ stancode.default <- function(object, data, family = gaussian(),
                       normalize = getOption("brms.normalize", TRUE),
                       parse = getOption("brms.parse_stancode", FALSE),
                       backend = getOption("brms.backend", "rstan"),
-                      silent = TRUE, save_model = NULL, marginalize = NULL, ...) {
-  print(marginalize)
-  marginalize_id <- which(names(attr(bterms$frame$re,"levels")) == marginalize)
+                      silent = TRUE, save_model = NULL, ...) {
 
   normalize <- as_one_logical(normalize)
   parse <- as_one_logical(parse)
@@ -122,21 +120,20 @@ stancode.default <- function(object, data, family = gaussian(),
   silent <- as_one_logical(silent)
 
   scode_re <- stan_re(
-    bterms, prior = prior, threads = threads, normalize = normalize, marginalize_id = marginalize_id
+    bterms, prior = prior, threads = threads, normalize = normalize
   )
-  #print(scode_re)
 
   scode_predictor <- stan_predictor(
     bterms, prior = prior, normalize = normalize,
-    stanvars = stanvars, threads = threads, marginalize_id = marginalize_id, scode_re = scode_re
+    stanvars = stanvars, threads = threads, scode_re = scode_re
   )
 
-  if(!is.null(marginalize_id) && length(marginalize_id)>0){ # Add the recovery code
+  if(!is.null(bterms$marginalize_id) && length(bterms$marginalize_id)>0){ # Add the recovery code
     str_add(scode_re$gen_comp) <- scode_predictor[[1]]$model_def
     str_add(scode_re$gen_comp) <- scode_predictor[[1]]$model_comp_eta_basic
     str_add(scode_re$gen_comp) <- scode_predictor[[1]]$model_comp_eta_loop
     str_add(scode_re$gen_comp) <- cglue(
-      "  z_{marginalize_id} = normal_id_glm_marginalized_recover_rng(Y, Xc, mu, b, sigma, J_{marginalize_id}, {scode_re$hyper_mar} {scode_re$data_mar});\n"
+      "  z_{bterms$marginalize_id} = normal_id_glm_marginalized_recover_rng(Y, Xc, mu, b, sigma, J_{bterms$marginalize_id}, {scode_re$hyper_mar} {scode_re$data_mar});\n"
     )
   }
 
@@ -237,7 +234,7 @@ stancode.default <- function(object, data, family = gaussian(),
   )
 
   # generate functions block
-  if(!is.null(marginalize_id) && length(marginalize_id)>0){
+  if(!is.null(bterms$marginalize_id) && length(bterms$marginalize_id)>0){
     scode_functions <- paste0(
       "// generated with brms ", utils::packageVersion("brms"), "\n",
       "functions {\n",
