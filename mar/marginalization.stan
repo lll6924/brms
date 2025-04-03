@@ -5,17 +5,17 @@
         }
         return res;
     }
-    array[,,] real batch_inverse(array[,,] real ar){
+    array[,,] real batch_inverse_spd(array[,,] real ar){
         array[size(ar),size(ar[1]),size(ar[1])] real res;
         for (n in 1:size(ar)) {
-            res[n] = to_array_2d(inverse(to_matrix(ar[n])));
+            res[n] = to_array_2d(inverse_spd(to_matrix(ar[n])));
         }
         return res;
     }
-    real batch_log_determinant(array[,,] real ar){
+    real batch_log_determinant_spd(array[,,] real ar){
         real res = 0;
         for (n in 1:size(ar)) {
-            res = res + log_determinant(to_matrix(ar[n]));
+            res = res + log_determinant_spd(to_matrix(ar[n]));
         }
         return res;
     }
@@ -39,23 +39,24 @@
         int n_obs = size(Y);
         vector[n_obs] z = Y - mu - Xc * b;
         matrix[M,M] s_u = multiply_lower_tri_self_transpose(diag_pre_multiply(sd, L));
-        matrix[M,M] inv_s_u = inverse(s_u);
+        matrix[M,M] inv_s_u = inverse_spd(s_u);
         real s_y = sigma * sigma;
         array[N,M,M] real F;
         for (m1 in 1:M){
-            for (m2 in 1:M){
+            for (m2 in 1:m1){
                 F[:,m1,m2] = to_array_1d(bincount(Z[m1] .* Z[m2], J) / s_y);
+                F[:,m2,m1] = F[:,m1,m2];
             }
         }
         for (n in 1:N){
             F[n] = to_array_2d(to_matrix(F[n]) + inv_s_u);
         }
-        array[N,M,M] real F_inv = batch_inverse(F);
+        array[N,M,M] real F_inv = batch_inverse_spd(F);
         array[N,M] real x;
         for (m in 1:M){
             x[:,m] = to_array_1d(bincount(z .* Z[m] / s_y, J));
         }
-        real a = batch_log_determinant(F) + log_determinant(s_u) * N + log(s_y) * n_obs;
+        real a = batch_log_determinant_spd(F) + log_determinant_spd(s_u) * N + log(s_y) * n_obs;
         real c = sum(z .* z / s_y);
         for (n in 1:N){
             c = c - quad_form(to_matrix(F_inv[n]), to_vector(x[n]));
@@ -84,7 +85,7 @@
         int n_obs = size(Y);
         vector[n_obs] z = Y - mu - Xc * b;
         matrix[M,M] s_u = multiply_lower_tri_self_transpose(diag_pre_multiply(sd, L));
-        matrix[M,M] inv_s_u = inverse(s_u);
+        matrix[M,M] inv_s_u = inverse_spd(s_u);
         real s_y = sigma * sigma;
         array[N,M,M] real G;
         for (m1 in 1:M){
@@ -96,7 +97,7 @@
         for (n in 1:N){
             F[n] = to_array_2d(to_matrix(G[n]) + inv_s_u);
         }
-        array[N,M,M] real F_inv = batch_inverse(F);
+        array[N,M,M] real F_inv = batch_inverse_spd(F);
         array[N,M] real x;
         for (m in 1:M){
             x[:,m] = to_array_1d(bincount(z .* Z[m] / s_y, J));
