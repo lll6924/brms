@@ -1808,7 +1808,6 @@ prepare_family <- function(x) {
   family <- x$family
   acframe <- frame_ac(x)
   family$fun <- family[["fun"]] %||% family$family
-  print(family)
   if (use_ac_cov_time(acframe) && has_natural_residuals(x)) {
     family$fun <- paste0(family$fun, "_time")
   } else if (has_ac_class(acframe, "sar")) {

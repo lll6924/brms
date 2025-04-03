@@ -1,4 +1,5 @@
 library(testthat)
-library(brms)
-
+library(devtools)
+# library(brms)
+load_all('../')
 test_check("brms")

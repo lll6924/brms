@@ -533,11 +533,15 @@ brm <- function(formula, data, family = gaussian(), prior = NULL,
     bframe$marginalize_id <- which(names(attr(bframe$frame$re,"levels")) == marginalize)
     if (!is.null(marginalize)) {
       marginalize <- as.character(marginalize)
+      bframe$effect_count <- 0
       levels <- attr(bframe$frame$re,"levels")
       if(!(marginalize %in% names(levels))){
         stop('Incorrect indexing of the marginalized effect!')
       }
       for(effect in bframe$frame$re$gcall){
+        if(effect$groups == marginalize){
+          bframe$effect_count <- bframe$effect_count + 1
+        }
         if(effect$groups == marginalize && effect$dist != 'gaussian'){
           stop('The marginalized effect should be gaussian!')
         }

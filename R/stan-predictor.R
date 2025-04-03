@@ -577,6 +577,7 @@ stan_re <- function(bframe, prior, normalize, ...) {
         )
         if(length(bframe$marginalize_id)>0&&id == bframe$marginalize_id){
           out$data_mar <- c(out$data_mar, cglue("Z_{idp[i]}_{r$cn[i]}_{ng}, "))
+          # out$aggregate_code <- c(out$aggregate_code, ) TODO: multivariate y marginalization code
         }
       }
     } else {
@@ -588,6 +589,7 @@ stan_re <- function(bframe, prior, normalize, ...) {
       )
       if(length(bframe$marginalize_id)>0&&id == bframe$marginalize_id){
           out$data_mar <- c(out$data_mar, cglue("Z_{idp[reqZ]}_{r$cn[reqZ]}, "))
+          out$aggregate_code <- c(out$aggregate_code, cglue("Z_aggregated[{r$cn[reqZ]}] = Z_{idp[reqZ]}_{r$cn[reqZ]};\n"))
       }
     }
   }

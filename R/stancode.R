@@ -132,9 +132,15 @@ stancode.default <- function(object, data, family = gaussian(),
     str_add(scode_re$gen_comp) <- scode_predictor[[1]]$model_def
     str_add(scode_re$gen_comp) <- scode_predictor[[1]]$model_comp_eta_basic
     str_add(scode_re$gen_comp) <- scode_predictor[[1]]$model_comp_eta_loop
-    str_add(scode_re$gen_comp) <- cglue(
-      "  z_{bterms$marginalize_id} = normal_id_glm_marginalized_recover_rng(Y, Xc, mu, b, sigma, J_{bterms$marginalize_id}, {scode_re$hyper_mar} {scode_re$data_mar});\n"
-    )
+    if(bterms$effect_count > 1){
+      str_add(scode_re$gen_comp) <- cglue(
+        "  z_{bterms$marginalize_id} = multi_normal_id_glm_marginalized_recover_rng(Y, Xc, mu, b, sigma, J_{bterms$marginalize_id}, {scode_re$hyper_mar} Z_aggregated);\n"
+      )
+    }else{
+      str_add(scode_re$gen_comp) <- cglue(
+        "  z_{bterms$marginalize_id} = normal_id_glm_marginalized_recover_rng(Y, Xc, mu, b, sigma, J_{bterms$marginalize_id}, {scode_re$hyper_mar} {scode_re$data_mar});\n"
+      )
+    }
   }
 
   scode_Xme <- stan_Xme(
@@ -271,14 +277,29 @@ stancode.default <- function(object, data, family = gaussian(),
   )
 
   # generate transformed parameters block
-  scode_transformed_data <- paste0(
-    "transformed data {\n",
-       scode_predictor[["tdata_def"]],
-       collapse_stanvars(stanvars, "tdata", "start"),
-       scode_predictor[["tdata_comp"]],
-       collapse_stanvars(stanvars, "tdata", "end"),
-    "}\n"
-  )
+  if(!is.null(bterms$marginalize_id) && length(bterms$marginalize_id)>0 && bterms$effect_count > 1){ # Aggregate data
+    scode_transformed_data <- paste0(
+      "transformed data {\n",
+         scode_predictor[["tdata_def"]],
+         collapse_stanvars(stanvars, "tdata", "start"),
+         scode_predictor[["tdata_comp"]],
+         cglue("array[M_{bterms$marginalize_id}] vector[N] Z_aggregated;\n"),
+         scode_re$aggregate_code,
+         collapse_stanvars(stanvars, "tdata", "end"),
+      "}\n"
+    )
+  }
+  else{
+    scode_transformed_data <- paste0(
+      "transformed data {\n",
+         scode_predictor[["tdata_def"]],
+         collapse_stanvars(stanvars, "tdata", "start"),
+         scode_predictor[["tdata_comp"]],
+         collapse_stanvars(stanvars, "tdata", "end"),
+      "}\n"
+    )
+  }
+
 
   # generate parameters block
   scode_parameters <- paste0(
