@@ -5,4 +5,6 @@ fit1 <- brm(bf(time ~ age + (age+1|disease*sex) + (1|patient), sigma ~ 1|disease
             prior = set_prior("cauchy(0,2)", class = "sd"),
             marginalize = 'patient')
 summary(fit1)
+sink('stan1.stan')
 stancode(fit1)
+sink()

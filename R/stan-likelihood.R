@@ -37,10 +37,10 @@ stan_log_lik_family <- function(bterms, threads, scode_re = NULL, ...) {
   # incorporate other parts into the likelihood
   args <- nlist(ll, bterms, threads, ...)
   if(!is.null(bterms$marginalize_id) && length(bterms$marginalize_id)>0){ # Add the parameters of the marginalized variables to the likelihood function
-    args$ll$args <- paste(args$ll$args, cglue("J_{bterms$marginalize_id}"), sep = ", ")
+    args$ll$args <- paste('Xc, mu, b, sigma', cglue("J_{bterms$marginalize_id}"), sep = ", ")
     args$ll$args <- paste(args$ll$args, scode_re$hyper_mar, sep = ", ")
     if(bterms$effect_count > 1){
-      args$ll$dist <- 'multi_normal_id_glm_marginalized'
+      args$ll$dist <- 'normal_id_glm_multi_marginalized'
       args$ll$args <- paste(args$ll$args, 'Z_aggregated', sep = " ")
     }else{
       args$ll$dist <- 'normal_id_glm_marginalized'

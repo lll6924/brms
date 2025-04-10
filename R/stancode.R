@@ -134,7 +134,7 @@ stancode.default <- function(object, data, family = gaussian(),
     str_add(scode_re$gen_comp) <- scode_predictor[[1]]$model_comp_eta_loop
     if(bterms$effect_count > 1){
       str_add(scode_re$gen_comp) <- cglue(
-        "  z_{bterms$marginalize_id} = multi_normal_id_glm_marginalized_recover_rng(Y, Xc, mu, b, sigma, J_{bterms$marginalize_id}, {scode_re$hyper_mar} Z_aggregated);\n"
+        "  z_{bterms$marginalize_id} = normal_id_glm_multi_marginalized_recover_rng(Y, Xc, mu, b, sigma, J_{bterms$marginalize_id}, {scode_re$hyper_mar} Z_aggregated);\n"
       )
     }else{
       str_add(scode_re$gen_comp) <- cglue(

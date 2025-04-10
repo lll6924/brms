@@ -567,9 +567,6 @@ brm <- function(formula, data, family = gaussian(), prior = NULL,
       save_model = save_model, backend = backend, threads = threads,
       opencl = opencl, normalize = normalize
     )
-    sink('stan.stan')
-    print(model)
-    sink()
     # initialize S3 object
     x <- brmsfit(
       formula = formula, data = data, data2 = data2, prior = prior,
