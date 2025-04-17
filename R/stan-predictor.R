@@ -53,7 +53,7 @@ stan_predictor.brmsframe <- function(x, prior, normalize, ...) {
   for (nlp in names(x$nlpars)) {
     nlp_args <- list(x$nlpars[[nlp]])
     nlp_args$marginalize_id <- x$marginalize_id
-    str_add_list(out) <- do_call(stan_predictor, c(nlp_args, args)) # Not sure how marginalize_id can be fed into this
+    str_add_list(out) <- do_call(stan_predictor, c(nlp_args, args))
   }
   for (dp in valid_dpars) {
     dp_terms <- x$dpars[[dp]]
@@ -577,7 +577,6 @@ stan_re <- function(bframe, prior, normalize, ...) {
         )
         if(length(bframe$marginalize_id)>0&&id == bframe$marginalize_id){
           out$data_mar <- c(out$data_mar, cglue("Z_{idp[i]}_{r$cn[i]}_{ng}, "))
-          # out$aggregate_code <- c(out$aggregate_code, ) TODO: multivariate y marginalization code
         }
       }
     } else {

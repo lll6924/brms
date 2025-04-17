@@ -30,7 +30,7 @@ stan_log_lik.mvbrmsterms <- function(x, ...) {
 stan_log_lik_family <- function(bterms, threads, scode_re = NULL, ...) {
   stopifnot(is.brmsterms(bterms))
   # prepare family part of the likelihood
-  log_lik_args <- nlist(bterms, threads , ...)
+  log_lik_args <- nlist(bterms, threads, ...)
   log_lik_fun <- prepare_family(bterms)$fun
   log_lik_fun <- paste0("stan_log_lik_", log_lik_fun)
   ll <- do_call(log_lik_fun, log_lik_args)

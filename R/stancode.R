@@ -129,10 +129,11 @@ stancode.default <- function(object, data, family = gaussian(),
   )
 
   if(!is.null(bterms$marginalize_id) && length(bterms$marginalize_id)>0){ # Add the recovery code
+    str_add(scode_re$fun) <- "  #include 'marginalization.stan'\n"
     str_add(scode_re$gen_comp) <- scode_predictor[[1]]$model_def
     str_add(scode_re$gen_comp) <- scode_predictor[[1]]$model_comp_eta_basic
     str_add(scode_re$gen_comp) <- scode_predictor[[1]]$model_comp_eta_loop
-    if(bterms$effect_count > 1){
+    if(bterms$effect_count > 1){ # check the number of data vectors of the marginalized effect
       str_add(scode_re$gen_comp) <- cglue(
         "  z_{bterms$marginalize_id} = normal_id_glm_multi_marginalized_recover_rng(Y, Xc, mu, b, sigma, J_{bterms$marginalize_id}, {scode_re$hyper_mar} Z_aggregated);\n"
       )
@@ -240,28 +241,15 @@ stancode.default <- function(object, data, family = gaussian(),
   )
 
   # generate functions block
-  if(!is.null(bterms$marginalize_id) && length(bterms$marginalize_id)>0){
-    scode_functions <- paste0(
-      "// generated with brms ", utils::packageVersion("brms"), "\n",
-      "functions {\n",
-        scode_predictor[["fun"]],
-        scode_re[["fun"]],
-        collapse_stanvars(stanvars, "functions"),
-        scode_predictor[["partial_log_lik"]],
-        "#include marginalization.stan", "\n",
-      "}\n"
-    )
-  } else{
-    scode_functions <- paste0(
-      "// generated with brms ", utils::packageVersion("brms"), "\n",
-      "functions {\n",
-        scode_predictor[["fun"]],
-        scode_re[["fun"]],
-        collapse_stanvars(stanvars, "functions"),
-        scode_predictor[["partial_log_lik"]],
-      "}\n"
-    )
-  }
+  scode_functions <- paste0(
+    "// generated with brms ", utils::packageVersion("brms"), "\n",
+    "functions {\n",
+      scode_predictor[["fun"]],
+      scode_re[["fun"]],
+      collapse_stanvars(stanvars, "functions"),
+      scode_predictor[["partial_log_lik"]],
+    "}\n"
+  )
 
 
   # generate data block
